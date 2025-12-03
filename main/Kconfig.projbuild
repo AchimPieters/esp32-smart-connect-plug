@@ -1,0 +1,34 @@
+menu "StudioPieters"
+
+
+      config ESP_RELAY_GPIO
+              int "Set the GPIO for the Relay"
+              default 24
+              help
+                  The GPIO number the Relay is connected to.
+
+      config ESP_BLUE_LED_GPIO
+              int "Set the GPIO for the blue LED"
+              default 7
+              help
+                  The GPIO number the blue LED is connected to.
+
+      config ESP_BUTTON_GPIO
+              int "Button GPIO"
+              default 26
+              help
+                  GPIO van de knop (actief laag als je button_config_default(button_active_low) gebruikt).
+
+      config ESP_SETUP_CODE
+              string "HomeKit Setup Code"
+              default "693-41-208"
+              help
+                  If you want to change the HomeKit Setup Code, you can do that here (Note:  you need to make a new QR-CODE To make it work)
+
+      config ESP_SETUP_ID
+              string "HomeKit Setup ID"
+              default "M4T8"
+              help
+                   If you want to change the HomeKit Setup ID, you can do that here (Note: you need to make a new QR-CODE To make it work)
+
+endmenu
