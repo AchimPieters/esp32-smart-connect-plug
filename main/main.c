@@ -1,5 +1,5 @@
 /**
-   Copyright 2026 Achim Pieters | StudioPieters®
+   Copyright 2025 Achim Pieters | StudioPieters®
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
    of this software and associated documentation files (the "Software"), to deal
@@ -43,8 +43,8 @@ static const char *RELAY_TAG   = "RELAY";
 static const char *BUTTON_TAG  = "BUTTON";
 static const char *IDENT_TAG   = "IDENT";
 
-// Relay / plug state
-bool relay_on = false;
+// Relay / plug state (enige bron van waarheid)
+static bool relay_on = false;
 
 // ---------- Low-level GPIO helpers ----------
 
@@ -53,14 +53,36 @@ static inline void relay_write(bool on) {
 }
 
 static inline void blue_led_write(bool on) {
-    // Single LED used both as relay indicator and identify LED
-    gpio_set_level(BLUE_LED_GPIO, on ? 1 : 0);
+    // Single LED used both as relay indicator and identify LED (active low)
+    gpio_set_level(BLUE_LED_GPIO, on ? 0 : 1);
 }
 
-// Apply logical relay state to hardware (relay + blue LED)
-void relay_apply_state(void) {
+// Forward declaration van de characteristic zodat we hem in functies kunnen gebruiken
+extern homekit_characteristic_t relay_on_characteristic;
+
+// Centrale functie: zet state, stuurt hardware aan en (optioneel) HomeKit-notify
+static void relay_set_state(bool on, bool notify_homekit) {
+    if (relay_on == on) {
+        // Geen verandering, niets te doen
+        return;
+    }
+
+    relay_on = on;
+
+    // Hardware aansturen
     relay_write(relay_on);
     blue_led_write(relay_on);
+
+    ESP_LOGI(RELAY_TAG, "Relay state -> %s", relay_on ? "ON" : "OFF");
+
+    // HomeKit characteristic-snapshot updaten
+    relay_on_characteristic.value = HOMEKIT_BOOL(relay_on);
+
+    // Eventueel HomeKit-clients informeren
+    if (notify_homekit) {
+        homekit_characteristic_notify(&relay_on_characteristic,
+                                      relay_on_characteristic.value);
+    }
 }
 
 // All GPIO Settings
@@ -73,16 +95,18 @@ void gpio_init(void) {
     gpio_reset_pin(BLUE_LED_GPIO);
     gpio_set_direction(BLUE_LED_GPIO, GPIO_MODE_OUTPUT);
 
-    // Initial states
+    // Initial state: alles uit, in sync brengen
     relay_on = false;
-    relay_apply_state();
+    relay_on_characteristic.value = HOMEKIT_BOOL(false);
+    relay_write(false);
+    blue_led_write(false);
 }
 
 // ---------- Accessory identification (Blue LED) ----------
 
 void accessory_identify_task(void *args) {
     // Blink BLUE LED to identify, then restore previous state
-    bool previous_led_state = relay_on;  // LED normally volgt relay_on
+    bool previous_led_state = relay_on;  // LED volgt normaal relay_on
 
     for (int i = 0; i < 3; i++) {
         for (int j = 0; j < 2; j++) {
@@ -121,20 +145,22 @@ homekit_characteristic_t model = HOMEKIT_CHARACTERISTIC_(MODEL, DEVICE_MODEL);
 homekit_characteristic_t revision = HOMEKIT_CHARACTERISTIC_(FIRMWARE_REVISION, LIFECYCLE_DEFAULT_FW_VERSION);
 homekit_characteristic_t ota_trigger = API_OTA_TRIGGER;
 
-// ON characteristic for the plug/relay
+// Getter: HomeKit vraagt huidige toestand op
 homekit_value_t relay_on_get() {
     return HOMEKIT_BOOL(relay_on);
 }
 
+// Setter: aangeroepen door HomeKit (Home-app / Siri / automations)
 void relay_on_set(homekit_value_t value) {
     if (value.format != homekit_format_bool) {
         ESP_LOGE(RELAY_TAG, "Invalid value format: %d", value.format);
         return;
     }
 
-    relay_on = value.bool_value;
-    ESP_LOGI(RELAY_TAG, "Setting relay %s", relay_on ? "ON" : "OFF");
-    relay_apply_state();
+    bool new_state = value.bool_value;
+
+    // Via centrale functie, maar ZONDER notify (originator is HomeKit zelf)
+    relay_set_state(new_state, false);
 }
 
 // We keep a handle to ON characteristic so we can notify on button presses
@@ -146,7 +172,7 @@ homekit_characteristic_t relay_on_characteristic =
 homekit_accessory_t *accessories[] = {
     HOMEKIT_ACCESSORY(
         .id = 1,
-        .category = homekit_accessory_category_outlet,  // Smart plug / outlet
+        .category = homekit_accessory_category_outlets,  // Smart plug / outlet
         .services = (homekit_service_t *[]) {
             HOMEKIT_SERVICE(ACCESSORY_INFORMATION, .characteristics = (homekit_characteristic_t *[]) {
                 &name,
@@ -183,13 +209,10 @@ void button_callback(button_event_t event, void *context) {
         ESP_LOGI(BUTTON_TAG, "Single press -> toggle relay");
 
         bool new_state = !relay_on;
-        homekit_value_t new_value = HOMEKIT_BOOL(new_state);
 
-        // Update via setter (keeps logic in one place)
-        relay_on_set(new_value);
+        // 1) Zelfde logica als HomeKit, maar nu MET notify
+        relay_set_state(new_state, true);
 
-        // Notify HomeKit about physical state change
-        homekit_characteristic_notify(&relay_on_characteristic, new_value);
         break;
     }
     case button_event_double_press:

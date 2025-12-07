@@ -3,7 +3,7 @@ menu "StudioPieters"
 
       config ESP_RELAY_GPIO
               int "Set the GPIO for the Relay"
-              default 24
+              default 5
               help
                   The GPIO number the Relay is connected to.
 
@@ -15,7 +15,7 @@ menu "StudioPieters"
 
       config ESP_BUTTON_GPIO
               int "Button GPIO"
-              default 26
+              default 6
               help
                   GPIO van de knop (actief laag als je button_config_default(button_active_low) gebruikt).
 
