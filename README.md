@@ -26,7 +26,7 @@ Update these values from the **StudioPieters** menu in `menuconfig` and regenera
 1. Install ESP-IDF **5.0 or newer**.
 2. From the project root, select your target and configure options:
    ```bash
-   idf.py set-target esp32
+   idf.py set-target esp32c3
    idf.py menuconfig
    ```
 3. Build and flash:
